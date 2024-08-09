@@ -782,4 +782,9 @@ public final class Constants {
   public static final String STORE_CAPABILITY_DIRECTORY_MARKER_ACTION_DELETE
       = "fs.s3a.capability.directory.marker.action.delete";
 
+  /**
+   * the separator is appended to the key name along with ETAG during the listing
+   * and is later used to ensure strong Etag matching
+   */
+  public static final String COMPOSITE_KEY_SEPARATOR = "#";
 }

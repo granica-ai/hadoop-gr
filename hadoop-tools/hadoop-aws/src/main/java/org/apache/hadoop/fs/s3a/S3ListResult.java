@@ -30,6 +30,9 @@ import com.amazonaws.services.s3.model.S3ObjectSummary;
 import org.slf4j.Logger;
 
 import org.apache.hadoop.fs.Path;
+import org.slf4j.LoggerFactory;
+
+import static org.apache.hadoop.fs.s3a.S3AUtils.makeCompositeKey;
 
 /**
  * API version-independent container for S3 List responses.
@@ -37,8 +40,25 @@ import org.apache.hadoop.fs.Path;
 public class S3ListResult {
   private ObjectListing v1Result;
   private ListObjectsV2Result v2Result;
-
+  private static final Logger LOG =
+          LoggerFactory.getLogger(S3ListResult.class);
   protected S3ListResult(ObjectListing v1, ListObjectsV2Result v2) {
+
+    if (v2 != null) {
+      for (S3ObjectSummary objectSummary : v2.getObjectSummaries()) {
+        String newKey =  makeCompositeKey(objectSummary.getKey(),objectSummary.getETag(),"S3ListResult");
+        objectSummary.setKey(newKey);
+        LOG.info("V2 list response: newKey: " + newKey + ", size: " + objectSummary.getSize());
+      }
+    }
+
+    if (v1 != null) {
+      for (S3ObjectSummary objectSummary : v1.getObjectSummaries()) {
+        // Handle composite key for v1 response
+        LOG.info("V1 list response: key: " + objectSummary.getKey() + ", etag: " + objectSummary.getETag());
+      }
+    }
+
     v1Result = v1;
     v2Result = v2;
   }
@@ -62,7 +82,7 @@ public class S3ListResult {
   }
 
   /**
-   * Is this a v1 API result or v2?
+   * Is this a v1 API result or v2ha
    * @return true if v1, false if v2
    */
   public boolean isV1() {
@@ -195,13 +215,13 @@ public class S3ListResult {
   public void logAtDebug(Logger log) {
     Collection<String> prefixes = getCommonPrefixes();
     Collection<S3ObjectSummary> summaries = getObjectSummaries();
-    log.debug("Prefix count = {}; object count={}",
+    log.info("Prefix count = {}; object count={}",
         prefixes.size(), summaries.size());
     for (S3ObjectSummary summary : summaries) {
-      log.debug("Summary: {} {}", summary.getKey(), summary.getSize());
+      log.info("Summary: {} {}", summary.getKey(), summary.getSize());
     }
     for (String prefix : prefixes) {
-      log.debug("Prefix: {}", prefix);
+      log.info("Prefix: {}", prefix);
     }
   }
 }

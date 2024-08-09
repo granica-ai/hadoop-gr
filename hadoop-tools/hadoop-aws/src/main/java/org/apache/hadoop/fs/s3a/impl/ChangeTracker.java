@@ -89,6 +89,10 @@ public class ChangeTracker {
     return revisionId;
   }
 
+  public void setRevisionId(String revisionId) {
+    this.revisionId = revisionId;
+  }
+
   public ChangeDetectionPolicy.Source getSource() {
     return policy.getSource();
   }
@@ -110,8 +114,10 @@ public class ChangeTracker {
     if (policy.getMode() == ChangeDetectionPolicy.Mode.Server
         && revisionId != null) {
       policy.applyRevisionConstraint(request, revisionId);
+      LOG.info("APPLYING CONSTRAINT revisionID-length {} revisionID {}", revisionId.length(), revisionId);
       return true;
     }
+    LOG.info("NOT APPLYING CONSTRAINT");
     return false;
   }
 
@@ -162,7 +168,7 @@ public class ChangeTracker {
           uri, newRevisionId);
       revisionId = newRevisionId;
     } else if (!revisionId.equals(newRevisionId)) {
-      LOG.debug("Revision ID changed from {} to {}",
+      LOG.info("Revision ID changed from {} to {}",
           revisionId, newRevisionId);
       ImmutablePair<Boolean, RemoteFileChangedException> pair =
           policy.onChangeDetected(
