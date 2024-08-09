@@ -104,6 +104,7 @@ import org.apache.hadoop.fs.PathIsNotEmptyDirectoryException;
 import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.StreamCapabilities;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.fs.s3a.Invoker.Retried;
 import org.apache.hadoop.fs.s3a.commit.CommitConstants;
 import org.apache.hadoop.fs.s3a.commit.PutTracker;
 import org.apache.hadoop.fs.s3a.commit.MagicCommitIntegration;
@@ -125,7 +126,6 @@ import static org.apache.hadoop.fs.impl.PathCapabilitiesSupport.validatePathCapa
 import static org.apache.hadoop.fs.s3a.Constants.*;
 import static org.apache.hadoop.fs.s3a.Invoker.*;
 import static org.apache.hadoop.fs.s3a.S3AUtils.*;
-import static org.apache.hadoop.fs.s3a.S3AUtils.getServerSideEncryptionKey;
 import static org.apache.hadoop.fs.s3a.Statistic.*;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import static org.apache.commons.lang3.StringUtils.isNotEmpty;
@@ -730,6 +730,7 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
           + " because it is a directory");
     }
 
+
     S3AReadOpContext readContext;
     readContext = createReadContext(
         fileStatus,
@@ -952,8 +953,10 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
     LOG.debug("Rename path {} to {}", src, dst);
     entryPoint(INVOCATION_RENAME);
 
-    String srcKey = pathToKey(src);
-    String dstKey = pathToKey(dst);
+    String[] parts = splitCompositeKey(pathToKey(src), "innerRename");
+    String srcKey = parts[0];
+    parts = splitCompositeKey(pathToKey(dst), "innerRename");
+    String dstKey = parts[0];
 
     if (srcKey.isEmpty()) {
       throw new RenameFailedException(src, dst, "source is root directory");
@@ -1294,6 +1297,9 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
    */
   @Retries.RetryRaw
   protected ObjectMetadata getObjectMetadata(String key) throws IOException {
+    String[] parts = splitCompositeKey(key, "getObjectMetadata");
+    key = parts[0];
+
     GetObjectMetadataRequest request =
         new GetObjectMetadataRequest(bucket, key);
     //SSE-C requires to be filled in if enabled for object metadata
@@ -1804,7 +1810,8 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
     Path f = status.getPath();
     LOG.debug("Delete path {} - recursive {}", f, recursive);
 
-    String key = pathToKey(f);
+    String[] parts = splitCompositeKey(pathToKey(f), "innerDelete");
+    String key = parts[0];
 
     if (status.isDirectory()) {
       LOG.debug("delete: Path is a directory: {}", f);
@@ -1829,7 +1836,7 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
         // HADOOP-13761 s3guard: retries here
         deleteObjectAtPath(f, key, false);
       } else {
-        LOG.debug("Getting objects for directory prefix {} to delete", key);
+        LOG.info("Getting objects for directory prefix {} to delete", key);
 
         S3ListRequest request = createListObjectsRequest(key, null);
 
@@ -1954,7 +1961,7 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
       IOException, AmazonClientException {
     Path path = qualify(f);
     String key = pathToKey(path);
-    LOG.debug("List status for path: {}", path);
+    LOG.info("List status for path: {}", path);
     entryPoint(INVOCATION_LIST_STATUS);
 
     List<FileStatus> result;
@@ -1971,7 +1978,7 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
       }
 
       S3ListRequest request = createListObjectsRequest(key, "/");
-      LOG.debug("listStatus: doing listObjects for directory {}", key);
+      LOG.info("listStatus: doing listObjects for directory {}", key);
 
       Listing.FileStatusListingIterator files =
           listing.createFileStatusListingIterator(path,
@@ -2213,6 +2220,7 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
             StatusProbeEnum.ALL,
             tombstones,
             true);
+        LOG.debug("S3GetFileStatus path {} key {} file-status {}", path, key, s3FileStatus);
         // entry was found, so save in S3Guard and return the final value.
         return S3Guard.putAndReturn(metadataStore, s3FileStatus,
             instrumentation);
@@ -2262,7 +2270,7 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
       try {
         // look for the simple file
         ObjectMetadata meta = getObjectMetadata(key);
-        LOG.debug("Found exact file: normal file {}", key);
+        LOG.debug("Found exact file: normal file {} etag {}", key, meta.getETag());
           return new S3AFileStatus(meta.getContentLength(),
               dateToLong(meta.getLastModified()),
               path,
@@ -2312,8 +2320,8 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
 
 
         if (listResult.hasPrefixesOrObjects(this::keyToPath, tombstones)) {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Found path as directory (with /)");
+        if (LOG.isInfoEnabled()) {
+            LOG.info("Found path as directory (with /)");
             listResult.logAtDebug(LOG);
           }
           // At least one entry has been found.

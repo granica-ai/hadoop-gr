@@ -1583,6 +1583,47 @@ public final class S3AUtils {
 
 
   /**
+   * Split the input string at the last occurence of #
+   * @param input
+   * @return array of strings obtained by splitting the input
+   */
+  public static String[] splitCompositeKey(String input, String msg) {
+    int lastHashIndex = input.lastIndexOf(COMPOSITE_KEY_SEPARATOR);
+    String[] result;
+
+    if (lastHashIndex == -1) {
+        // No hash found, return the original string
+        result = new String[]{input};
+    } else {
+        // Split the string at the last hash
+        String firstPart = input.substring(0, lastHashIndex);
+        String secondPart = input.substring(lastHashIndex + 1);
+
+        if (secondPart.isEmpty()) {
+            // Second part is empty, return an array with only the first part
+            result = new String[]{firstPart};
+        } else {
+            // Both parts are non-empty, return an array with both parts
+            result = new String[]{firstPart, secondPart};
+        }
+    }
+    if (result.length > 1) {
+      LOG.info("{} etag found, key split into {} and {}", msg, result[0], result[1]);
+    } else {
+      LOG.info("{} no etag found, key is {}", msg, result[0]);
+    }
+    return result;
+  }
+
+  // Append '#' followed by ETag
+  public static String makeCompositeKey(String key, String Etag, String msg) {
+    if (LOG.isDebugEnabled()){
+      LOG.info("{} creating composite key from {} and {}", msg, key, Etag);
+    }
+    return key + COMPOSITE_KEY_SEPARATOR + Etag;
+  }
+
+  /**
    * Path filter which ignores any file which starts with . or _.
    */
   public static final PathFilter HIDDEN_FILE_FILTER = new PathFilter() {
